@@ -7,6 +7,7 @@ namespace CertChecker
     {
         public string Name;
         public string Description;
+        public string[] Arguments;
         public Func<SlackParams, IActionResult> CommandAction;
     }
 }
