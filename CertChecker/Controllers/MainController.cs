@@ -17,16 +17,17 @@ namespace CertChecker.Controllers
         private readonly string _expectedToken;
         private readonly Dictionary<string, Command> commands;
 
-        public MainController(ILogger<MainController> logger, ICertificateReader certificateReader, IConfiguration configuration)
+        public MainController(ILogger<MainController> logger, ICertificateReader certificateReader,
+            IConfiguration configuration)
         {
             _logger = logger;
             _certificateReader = certificateReader;
             _expectedToken = configuration.GetValue("SLACK_TOKEN", "invalid_token");
             commands = new Dictionary<string, Command>();
-            
-            registerCommand("add", "Add a new domain to the monitoring list.", commandAdd);
-            registerCommand("remove", "Remove a domain from the monitoring list.", commandRemove);
-            registerCommand("check", "Check a certificates's expirty date.", commandCheck);
+
+            registerCommand("add", "Add a new domain to your monitoring list.", commandAdd);
+            registerCommand("remove", "Remove a domain from your monitoring list.", commandRemove);
+            registerCommand("check", "Check the certificate expiry date for a domain.", commandCheck);
             registerCommand("help", "Display this help message.", commandHelp);
         }
 
@@ -35,16 +36,18 @@ namespace CertChecker.Controllers
         public IActionResult Post(IFormCollection data)
         {
             var clientToken = data["token"];
-            
-            if (clientToken != _expectedToken) {
-                _logger.LogWarning($"Client tried to call service with unrecognized token {clientToken}"); 
+
+            if (clientToken != _expectedToken)
+            {
+                _logger.LogWarning($"Client tried to call service with unrecognized token {clientToken}");
                 return Unauthorized();
             }
-            
+
             return handleCommand(new SlackParams(data));
         }
-    
-        private void registerCommand(string commandName, string commandDescription, Func<SlackParams, IActionResult> commandAction)
+
+        private void registerCommand(string commandName, string commandDescription,
+            Func<SlackParams, IActionResult> commandAction)
         {
             commands.Add(commandName, new Command
             {
@@ -56,7 +59,9 @@ namespace CertChecker.Controllers
 
         private IActionResult handleCommand(SlackParams slackParams)
         {
-            return commands.TryGetValue(slackParams.SubCommand, out var command) ? command.CommandAction(slackParams) : commandHelp(slackParams);
+            return commands.TryGetValue(slackParams.SubCommand, out var command)
+                ? command.CommandAction(slackParams)
+                : commandHelp(slackParams);
         }
 
         private IActionResult commandCheck(SlackParams slackParams)
@@ -69,14 +74,15 @@ namespace CertChecker.Controllers
             var cert = _certificateReader.GetCertificate(host).Result;
             var expiry = DateTime.Parse(cert.GetExpirationDateString());
             var timeUntilExpired = expiry - DateTime.Now;
-            return Ok($"Certificate expires in {timeUntilExpired.Days} days {timeUntilExpired.Hours} hours. ({SlackHelper.FormatDate(expiry)})");
+            return Ok(
+                $"Certificate expires in {timeUntilExpired.Days} days {timeUntilExpired.Hours} hours. ({SlackHelper.FormatDate(expiry)})");
         }
 
         private IActionResult commandAdd(SlackParams slackParams)
         {
             return Ok("This is add!");
         }
-        
+
         private IActionResult commandRemove(SlackParams slackParams)
         {
             return Ok("This is remove!");
@@ -84,7 +90,24 @@ namespace CertChecker.Controllers
 
         private IActionResult commandHelp(SlackParams slackParams)
         {
-            return Ok("This is help!");
+            return Ok(new SlackMessage
+            {
+                Text = "Usage: /certs [subcommand], where subcommand is one of the following.",
+                Attachments = new List<SlackAttachment>(1)
+                {
+                    new SlackAttachment
+                    {
+                        Fallback = "Commands listing.",
+                        Fields = commands.Select(command => new SlackField
+                            {
+                                Title = command.Value.Name,
+                                Value = command.Value.Description,
+                                Short = false
+                            })
+                            .ToList()
+                    }
+                }
+            });
         }
     }
 }
